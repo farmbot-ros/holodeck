@@ -34,6 +34,8 @@ install(
 
 
 set(executables
+    rerun
+    visualizer_node
 )
 
 find_package(ament_cmake REQUIRED)
@@ -46,9 +48,11 @@ find_package(sensor_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
+find_package(tf2_msgs REQUIRED)
 find_package(message_filters REQUIRED)
 find_package(pcl_ros REQUIRED)
 find_package(pcl_conversions REQUIRED)
+find_package(cv_bridge REQUIRED)
 find_package(farmbot_interfaces REQUIRED)
 find_package(rviz_common REQUIRED)
 find_package(rviz_rendering REQUIRED)
@@ -76,9 +80,11 @@ set(dependencies_ros
     visualization_msgs
     tf2
     tf2_ros
+    tf2_msgs
     message_filters
     pcl_ros
     pcl_conversions
+    cv_bridge
     farmbot_interfaces
     rviz_common
     rviz_rendering
@@ -93,25 +99,44 @@ find_package(Eigen3 REQUIRED)
 include_directories(${Eigen_INCLUDE_DIRS})
 link_directories(${Eigen_LIBRARY_DIRS})
 add_definitions(${Eigen_DEFINITIONS})
+find_package(OpenCV REQUIRED)
 find_package(fmt REQUIRED)
 find_package(PCL REQUIRED)
 include_directories(${PCL_INCLUDE_DIRS})
 link_directories(${PCL_LIBRARY_DIRS})
 add_definitions(${PCL_DEFINITIONS})
+find_package(nlohmann_json REQUIRED)
+find_package(yaml-cpp REQUIRED)
 
 
 set(dependencies_sys
-    muli
+    rerun_sdk
     fmt::fmt
     ${Boost_LIBRARIES}
+    ${OpenCV_LIBS}
     ${PCL_LIBRARIES}
     ${Eigen_LIBRARIES}
+    nlohmann_json::nlohmann_json
+    ${YAML_CPP_LIBRARIES}
 )
+
+set(libraries
+    rerun_ros_interface
+)
+
+foreach(library ${libraries})
+    add_library(${library} lib/${library}.cpp)
+    target_include_directories(${library} PUBLIC include)
+    ament_target_dependencies(${library} ${dependencies_ros})
+    target_link_libraries(${library} ${dependencies_sys})
+endforeach()
 
 foreach(executable ${executables})
     add_executable(${executable} src/${executable}.cpp)
+    target_include_directories(${executable} PUBLIC include)
     ament_target_dependencies(${executable} ${dependencies_ros})
     target_link_libraries(${executable} ${dependencies_sys})
+    target_link_libraries(${executable} ${libraries})
     # target_compile_options(${executable} PRIVATE -Wno-unused-parameter)
 endforeach()
 
