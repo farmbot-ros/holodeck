@@ -64,7 +64,7 @@ class Beacon {
                 "loc/odom", 10, std::bind(&Beacon::robo_pose_callback, this, _1));
 
             gps_pose = node->create_subscription<sensor_msgs::msg::NavSatFix>(
-                "gnss/fix", 10, std::bind(&Beacon::robo_gps_callback, this, _1));
+                "loc/fix", 10, std::bind(&Beacon::robo_gps_callback, this, _1));
         }
 
         ~Beacon() {
@@ -98,7 +98,7 @@ class Beacon {
                 )
             );
             rec->log_static(
-                "world/map/"+namespace_+"/loc",
+                "world/map/"+namespace_+"/odom",
                 rerun::Points3D(points).with_colors(colors).with_radii({0.5f}))
             ;
         }
@@ -110,7 +110,7 @@ class Beacon {
             auto lon = msg->longitude;
 
             rec->log_static(
-                namespace_+"/gps",
+                "world/map/"+namespace_+"/fix",
                 rerun::GeoPoints::from_lat_lon({{lat, lon}})
                     .with_radii(rerun::Radius::ui_points(10.0f))
                     .with_colors(rerun::Color(color[0], color[1], color[2]))
