@@ -23,40 +23,38 @@ class Beacon {
     private:
         std::string namespace_;
         rclcpp::Node::SharedPtr node;
+        std::string tcp;
         std::shared_ptr<rerun::RecordingStream> rec;
         rclcpp::Publisher<std_msgs::msg::String>::SharedPtr publisher;
         rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr robo_pose;
         rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr gps_pose;
 
-        rerun::Color color = {
-            static_cast<uint8_t>(rand() % 255),
-            static_cast<uint8_t>(rand() % 255),
-            static_cast<uint8_t>(rand() % 255)
-        };
-
-        // rclcpp::Subscription<std_msgs::msg::Str
-        // rcl
+        std::tuple<float, float, float> color;
 
 
    public:
         Beacon(rclcpp::Node::SharedPtr node) : node(node) {
             echo::info("Beacon created");
+            tcp = node->get_parameter_or<std::string>("tcp", "127.0.0.1:9876");
 
 
             namespace_ = node->get_namespace();
             if (!namespace_.empty() && namespace_[0] == '/') {
-                namespace_ = namespace_.substr(1); // Remove leading slash
+                namespace_ = namespace_.substr(1);
             }
 
             rec = std::make_shared<rerun::RecordingStream>("farmbot", "space");
+            auto _ = rec->connect_tcp(tcp);
             rec->disable_timeline("rec");
 
-
-
-            // rec->log("world/map"+namespace_, rerun::Transform3D
+            color = {
+                static_cast<float>(rand() % 255),
+                static_cast<float>(rand() % 255),
+                static_cast<float>(rand() % 255)
+            };
 
             if(rec->spawn().is_err()){
-                echo::error("Failed to spawn viewer");
+                echo::warn("Could not spawn viewer");
             }
 
 
@@ -78,7 +76,13 @@ class Beacon {
             echo::info("Robo pose callback");
             rerun::Position3D pos = {.0, .0, .0};
             points.push_back(pos);
-            colors.push_back(color);
+            colors.push_back(
+                rerun::Color(
+                    static_cast<uint8_t>(std::get<0>(color)),
+                    static_cast<uint8_t>(std::get<1>(color)),
+                    static_cast<uint8_t>(std::get<2>(color))
+                )
+            );
 
             rec->log_static(
                 "world/map/"+namespace_,
@@ -121,14 +125,6 @@ class Beacon {
 int main(int argc, char** argv) {
     rclcpp::init(argc, argv);
     rclcpp::executors::MultiThreadedExecutor executor(rclcpp::ExecutorOptions(), 4);
-
-    auto rec_ptr = std::make_shared<rerun::RecordingStream>("holodeck");
-    // rec_ptr->connect_tcp("10.92.227.1:9876");
-
-    if(rec_ptr->spawn().is_err()){
-        echo::error("Failed to spawn viewer");
-        return 1;
-    }
 
     rclcpp::NodeOptions options_0;
     options_0.allow_undeclared_parameters(true);

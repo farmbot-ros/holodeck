@@ -12,7 +12,7 @@ from launch.actions import OpaqueFunction
 
 def launch_setup(context, *args, **kwargs):
     namespace = LaunchConfiguration('namespace').perform(context)
-    controller = LaunchConfiguration('controller').perform(context)
+    tcp = LaunchConfiguration('tcp').perform(context)
     # param_file = os.path.join(get_package_share_directory('farmbot_holodeck'), 'config', 'params.yaml')
 
     nodes_array = []
@@ -25,7 +25,7 @@ def launch_setup(context, *args, **kwargs):
         parameters=[
             # yaml.safe_load(open(param_file))['rerun']['ros__parameters'],
             # yaml.safe_load(open(param_file))['global']['ros__parameters'],
-            {'controller': controller} if controller != '' else {}
+            {'tcp': tcp} if tcp != '' else {}
         ]
     )
     nodes_array.append(rerun)
@@ -35,11 +35,11 @@ def launch_setup(context, *args, **kwargs):
 
 def generate_launch_description():
     namespace_arg = DeclareLaunchArgument('namespace', default_value='fbot')
-    controller_arg = DeclareLaunchArgument('controller', default_value='')
+    tcp_arg = DeclareLaunchArgument('tcp', default_value='')
 
     return LaunchDescription([
         namespace_arg,
-        controller_arg,
+        tcp_arg,
         OpaqueFunction(function = launch_setup)
         ]
     )
