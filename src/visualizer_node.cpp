@@ -1,16 +1,103 @@
-#include "rerun_bridge/visualizer_node.hpp"
+#include <chrono>
+#include <algorithm>
+#include <string>
+#include <memory>
+#include <map>
+
 #include "rerun_bridge/rerun_ros_interface.hpp"
 
-#include <algorithm>
-#include <chrono>
-#include <memory>
+
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
+#include <yaml-cpp/yaml.h>
+#include <geometry_msgs/msg/pose_stamped.hpp>
+#include <nav_msgs/msg/odometry.hpp>
+#include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/camera_info.hpp>
+#include <sensor_msgs/msg/image.hpp>
+#include <sensor_msgs/msg/imu.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
+#include <tf2_msgs/msg/tf_message.hpp>
 
 #include <ament_index_cpp/get_package_prefix.hpp>
 #include <ament_index_cpp/get_package_share_directory.hpp>
 
+#include <rerun.hpp>
+
+using TopicOptions = std::map<std::string, YAML::Node>;
+
+class RerunLoggerNode : public rclcpp::Node {
+  public:
+    RerunLoggerNode();
+    void spin();
+
+  private:
+    rclcpp::CallbackGroup::SharedPtr _parallel_callback_group;
+    std::map<std::string, std::shared_ptr<rclcpp::SubscriptionBase>> _topic_to_subscription;
+    std::map<std::string, std::string> _tf_frame_to_entity_path;
+    std::map<std::string, std::string> _tf_frame_to_parent;
+    std::map<std::string, TopicOptions> _raw_topic_options;
+    rclcpp::Time _last_tf_update_time;
+
+    void _read_yaml_config(std::string yaml_path);
+
+    TopicOptions _resolve_topic_options(const std::string& topic, const std::string& message_type)
+        const;
+    std::string _resolve_entity_path(const std::string& topic, const TopicOptions& topic_options)
+        const;
+
+    void _add_tf_tree(
+        const YAML::Node& node, const std::string& parent_entity_path,
+        const std::string& parent_frame
+    );
+
+    const rerun::RecordingStream _rec{"rerun_logger_node"};
+    std::string _root_frame;
+    float _tf_fixed_rate;
+    std::unique_ptr<tf2_ros::Buffer> _tf_buffer;
+    std::unique_ptr<tf2_ros::TransformListener> _tf_listener;
+
+    rclcpp::TimerBase::SharedPtr _create_subscriptions_timer;
+    rclcpp::TimerBase::SharedPtr _update_tf_timer;
+
+    void _create_subscriptions();
+    void _update_tf();
+
+    void _handle_msg_header(
+        bool restamp, bool lookup_transform, const std::string& entity_path,
+        std_msgs::msg::Header& header
+    );
+
+    /* Message specific subscriber factory functions */
+    std::shared_ptr<rclcpp::Subscription<sensor_msgs::msg::Image>> _create_image_subscription(
+        const std::string& topic, const TopicOptions& topic_options
+    );
+    std::shared_ptr<rclcpp::Subscription<sensor_msgs::msg::Imu>> _create_imu_subscription(
+        const std::string& topic, const TopicOptions& topic_options
+    );
+    std::shared_ptr<rclcpp::Subscription<geometry_msgs::msg::PoseStamped>>
+        _create_pose_stamped_subscription(
+            const std::string& topic, const TopicOptions& topic_options
+        );
+    std::shared_ptr<rclcpp::Subscription<tf2_msgs::msg::TFMessage>> _create_tf_message_subscription(
+        const std::string& topic, const TopicOptions& topic_options
+    );
+    std::shared_ptr<rclcpp::Subscription<nav_msgs::msg::Odometry>> _create_odometry_subscription(
+        const std::string& topic, const TopicOptions& topic_options
+    );
+    std::shared_ptr<rclcpp::Subscription<sensor_msgs::msg::CameraInfo>>
+        _create_camera_info_subscription(
+            const std::string& topic, const TopicOptions& topic_options
+        );
+    std::shared_ptr<rclcpp::Subscription<sensor_msgs::msg::PointCloud2>>
+        _create_point_cloud2_subscription(
+            const std::string& topic, const TopicOptions& topic_options
+        );
+};
+
 using namespace std::chrono_literals;
 
-ImageOptions image_options_from_topic_options(const TopicOptions& topic_options) {
+ImageOptions image_options_from_topic_options(const TopicOptions &topic_options) {
     ImageOptions options;
     if (topic_options.find("min_depth") != topic_options.end()) {
         options.min_depth = topic_options.at("min_depth").as<float>();
@@ -21,7 +108,7 @@ ImageOptions image_options_from_topic_options(const TopicOptions& topic_options)
     return options;
 }
 
-PointCloud2Options point_cloud2_options_from_topic_options(const TopicOptions& topic_options) {
+PointCloud2Options point_cloud2_options_from_topic_options(const TopicOptions &topic_options) {
     PointCloud2Options options;
     if (topic_options.find("colormap") != topic_options.end()) {
         options.colormap = topic_options.at("colormap").as<std::string>();
@@ -38,7 +125,7 @@ PointCloud2Options point_cloud2_options_from_topic_options(const TopicOptions& t
     return options;
 }
 
-std::string parent_entity_path(const std::string& entity_path) {
+std::string parent_entity_path(const std::string &entity_path) {
     auto last_slash = entity_path.rfind('/');
     if (last_slash == std::string::npos) {
         return "";
@@ -46,19 +133,16 @@ std::string parent_entity_path(const std::string& entity_path) {
     return entity_path.substr(0, last_slash);
 }
 
-std::string resolve_ros_path(const std::string& path) {
+std::string resolve_ros_path(const std::string &path) {
     if (path.find("package://") == 0) {
         std::string package_name = path.substr(10, path.find('/', 10) - 10);
         std::string relative_path = path.substr(10 + package_name.size());
         try {
             std::string package_path = ament_index_cpp::get_package_share_directory(package_name);
             return package_path + relative_path;
-        } catch (ament_index_cpp::PackageNotFoundError& e) {
-            throw std::runtime_error(
-                "Could not resolve " + path +
-                ". Replace with relative / absolute path, source the correct ROS environment, or install " +
-                package_name + "."
-            );
+        } catch (ament_index_cpp::PackageNotFoundError &e) {
+            throw std::runtime_error("Could not resolve " + path + ". Replace with relative / absolute path, source the correct ROS environment, or install " +
+                                     package_name + ".");
         }
     } else if (path.find("file://") == 0) {
         return path.substr(7);
@@ -89,17 +173,11 @@ RerunLoggerNode::RerunLoggerNode() : Node("rerun_logger_node") {
 
     // check for new topics every 0.1 seconds
     _create_subscriptions_timer = this->create_wall_timer(
-        100ms,
-        [&]() -> void { _create_subscriptions(); },
-        _parallel_callback_group
-    );
+        100ms, [&]() -> void { _create_subscriptions(); }, _parallel_callback_group);
 
     if (_tf_fixed_rate != 0.0) {
         _update_tf_timer = this->create_wall_timer(
-            std::chrono::duration<float>(1. / _tf_fixed_rate),
-            [&]() { _update_tf(); },
-            _parallel_callback_group
-        );
+            std::chrono::duration<float>(1. / _tf_fixed_rate), [&]() { _update_tf(); }, _parallel_callback_group);
     }
 }
 
@@ -107,15 +185,12 @@ RerunLoggerNode::RerunLoggerNode() : Node("rerun_logger_node") {
 /// If the topic is explicitly mapped to an entity path, use that.
 /// Otherwise, the topic name will be automatically converted to a flattened entity path like this:
 ///   "/one/two/three/four" -> "/topics/one-two-three/four"
-std::string RerunLoggerNode::_resolve_entity_path(
-    const std::string& topic, const TopicOptions& topic_options
-) const {
+std::string RerunLoggerNode::_resolve_entity_path(const std::string &topic, const TopicOptions &topic_options) const {
     if (topic_options.find("entity_path") != topic_options.end()) {
         return topic_options.at("entity_path").as<std::string>();
     } else {
         std::string flattened_topic = topic;
-        auto last_slash =
-            (std::find(flattened_topic.rbegin(), flattened_topic.rend(), '/') + 1).base();
+        auto last_slash = (std::find(flattened_topic.rbegin(), flattened_topic.rend(), '/') + 1).base();
 
         if (last_slash != flattened_topic.begin()) {
             // keep leading slash and last slash
@@ -132,12 +207,10 @@ std::string RerunLoggerNode::_resolve_entity_path(
 //  2. Options for message types (such as sensor_msgs::msg::Image)
 //  3. Options for the exact topic name (such as /ns/topic)
 // Aside from these rules, the options are merged in the order they are defined in the yaml file.
-TopicOptions RerunLoggerNode::_resolve_topic_options(
-    const std::string& topic, const std::string& message_type
-) const {
+TopicOptions RerunLoggerNode::_resolve_topic_options(const std::string &topic, const std::string &message_type) const {
     TopicOptions merged_options;
     // 1. partial topic names
-    for (const auto& [prefix, options] : _raw_topic_options) {
+    for (const auto &[prefix, options] : _raw_topic_options) {
         if (topic.find(prefix) == 0) {
             merged_options.insert(options.begin(), options.end());
         }
@@ -163,54 +236,30 @@ void RerunLoggerNode::_read_yaml_config(std::string yaml_path) {
 
     // see https://www.rerun.io/docs/howto/ros2-nav-turtlebot#tf-to-rrtransform3d
     if (config["extra_transform3ds"]) {
-        for (const auto& extra_transform3d : config["extra_transform3ds"]) {
-            const std::array<float, 3> translation = {
-                extra_transform3d["transform"][3].as<float>(),
-                extra_transform3d["transform"][7].as<float>(),
-                extra_transform3d["transform"][11].as<float>()};
+        for (const auto &extra_transform3d : config["extra_transform3ds"]) {
+            const std::array<float, 3> translation = {extra_transform3d["transform"][3].as<float>(), extra_transform3d["transform"][7].as<float>(),
+                                                      extra_transform3d["transform"][11].as<float>()};
             // Rerun uses column-major order for Mat3x3
             const std::array<float, 9> mat3x3 = {
-                extra_transform3d["transform"][0].as<float>(),
-                extra_transform3d["transform"][4].as<float>(),
-                extra_transform3d["transform"][8].as<float>(),
-                extra_transform3d["transform"][1].as<float>(),
-                extra_transform3d["transform"][5].as<float>(),
-                extra_transform3d["transform"][9].as<float>(),
-                extra_transform3d["transform"][2].as<float>(),
-                extra_transform3d["transform"][6].as<float>(),
-                extra_transform3d["transform"][10].as<float>()};
-            _rec.log_static(
-                extra_transform3d["entity_path"].as<std::string>(),
-                rerun::Transform3D(
-                    rerun::Vec3D(translation),
-                    rerun::Mat3x3(mat3x3),
-                    extra_transform3d["from_parent"].as<bool>()
-                )
-            );
+                extra_transform3d["transform"][0].as<float>(), extra_transform3d["transform"][4].as<float>(), extra_transform3d["transform"][8].as<float>(),
+                extra_transform3d["transform"][1].as<float>(), extra_transform3d["transform"][5].as<float>(), extra_transform3d["transform"][9].as<float>(),
+                extra_transform3d["transform"][2].as<float>(), extra_transform3d["transform"][6].as<float>(), extra_transform3d["transform"][10].as<float>()};
+            _rec.log_static(extra_transform3d["entity_path"].as<std::string>(),
+                            rerun::Transform3D(rerun::Vec3D(translation), rerun::Mat3x3(mat3x3), extra_transform3d["from_parent"].as<bool>()));
         }
     }
     if (config["extra_pinholes"]) {
-        for (const auto& extra_pinhole : config["extra_pinholes"]) {
+        for (const auto &extra_pinhole : config["extra_pinholes"]) {
             // Rerun uses column-major order for Mat3x3
             const std::array<float, 9> image_from_camera = {
-                extra_pinhole["image_from_camera"][0].as<float>(),
-                extra_pinhole["image_from_camera"][3].as<float>(),
-                extra_pinhole["image_from_camera"][6].as<float>(),
-                extra_pinhole["image_from_camera"][1].as<float>(),
-                extra_pinhole["image_from_camera"][4].as<float>(),
-                extra_pinhole["image_from_camera"][7].as<float>(),
-                extra_pinhole["image_from_camera"][2].as<float>(),
-                extra_pinhole["image_from_camera"][5].as<float>(),
+                extra_pinhole["image_from_camera"][0].as<float>(), extra_pinhole["image_from_camera"][3].as<float>(),
+                extra_pinhole["image_from_camera"][6].as<float>(), extra_pinhole["image_from_camera"][1].as<float>(),
+                extra_pinhole["image_from_camera"][4].as<float>(), extra_pinhole["image_from_camera"][7].as<float>(),
+                extra_pinhole["image_from_camera"][2].as<float>(), extra_pinhole["image_from_camera"][5].as<float>(),
                 extra_pinhole["image_from_camera"][8].as<float>(),
             };
-            _rec.log_static(
-                extra_pinhole["entity_path"].as<std::string>(),
-                rerun::Pinhole(image_from_camera)
-                    .with_resolution(
-                        extra_pinhole["width"].as<int>(),
-                        extra_pinhole["height"].as<int>()
-                    )
-            );
+            _rec.log_static(extra_pinhole["entity_path"].as<std::string>(),
+                            rerun::Pinhole(image_from_camera).with_resolution(extra_pinhole["width"].as<int>(), extra_pinhole["height"].as<int>()));
         }
     }
     if (config["tf"]) {
@@ -237,36 +286,23 @@ void RerunLoggerNode::_read_yaml_config(std::string yaml_path) {
             urdf_entity_path = config["urdf"]["entity_path"].as<std::string>();
         }
         if (config["urdf"]["file_path"]) {
-            std::string urdf_file_path =
-                resolve_ros_path(config["urdf"]["file_path"].as<std::string>());
+            std::string urdf_file_path = resolve_ros_path(config["urdf"]["file_path"].as<std::string>());
             if (urdf_file_path.size()) {
-                RCLCPP_INFO(
-                    this->get_logger(),
-                    "Logging URDF from file path %s",
-                    urdf_file_path.c_str()
-                );
+                RCLCPP_INFO(this->get_logger(), "Logging URDF from file path %s", urdf_file_path.c_str());
                 _rec.log_file_from_path(urdf_file_path, urdf_entity_path, true);
             }
         }
     }
 }
 
-void RerunLoggerNode::_add_tf_tree(
-    const YAML::Node& topic_options, const std::string& parent_entity_path,
-    const ::std::string& parent_frame
-) {
-    for (const auto& child : topic_options) {
+void RerunLoggerNode::_add_tf_tree(const YAML::Node &topic_options, const std::string &parent_entity_path, const ::std::string &parent_frame) {
+    for (const auto &child : topic_options) {
         auto frame = child.first.as<std::string>();
         auto value = child.second;
         const std::string entity_path = parent_entity_path + "/" + frame;
         _tf_frame_to_entity_path[frame] = entity_path;
         _tf_frame_to_parent[frame] = parent_frame;
-        RCLCPP_INFO(
-            this->get_logger(),
-            "Mapping tf frame %s to entity path %s",
-            frame.c_str(),
-            entity_path.c_str()
-        );
+        RCLCPP_INFO(this->get_logger(), "Mapping tf frame %s to entity path %s", frame.c_str(), entity_path.c_str());
         if (value.size() >= 1) {
             _add_tf_tree(value, entity_path, frame);
         }
@@ -274,18 +310,14 @@ void RerunLoggerNode::_add_tf_tree(
 }
 
 void RerunLoggerNode::_create_subscriptions() {
-    for (const auto& [topic_name, topic_types] : this->get_topic_names_and_types()) {
+    for (const auto &[topic_name, topic_types] : this->get_topic_names_and_types()) {
         // already subscribed to this topic?
         if (_topic_to_subscription.find(topic_name) != _topic_to_subscription.end()) {
             continue;
         }
 
         if (topic_types.size() != 1) {
-            RCLCPP_WARN(
-                this->get_logger(),
-                "Skipping topic %s with multiple types",
-                topic_name.c_str()
-            );
+            RCLCPP_WARN(this->get_logger(), "Skipping topic %s with multiple types", topic_name.c_str());
             continue;
         }
 
@@ -294,26 +326,19 @@ void RerunLoggerNode::_create_subscriptions() {
         const auto topic_options = _resolve_topic_options(topic_name, message_type);
 
         if (topic_type == "sensor_msgs/msg/Image") {
-            _topic_to_subscription[topic_name] =
-                _create_image_subscription(topic_name, topic_options);
+            _topic_to_subscription[topic_name] = _create_image_subscription(topic_name, topic_options);
         } else if (topic_type == "sensor_msgs/msg/Imu") {
-            _topic_to_subscription[topic_name] =
-                _create_imu_subscription(topic_name, topic_options);
+            _topic_to_subscription[topic_name] = _create_imu_subscription(topic_name, topic_options);
         } else if (topic_type == "geometry_msgs/msg/PoseStamped") {
-            _topic_to_subscription[topic_name] =
-                _create_pose_stamped_subscription(topic_name, topic_options);
+            _topic_to_subscription[topic_name] = _create_pose_stamped_subscription(topic_name, topic_options);
         } else if (topic_type == "tf2_msgs/msg/TFMessage") {
-            _topic_to_subscription[topic_name] =
-                _create_tf_message_subscription(topic_name, topic_options);
+            _topic_to_subscription[topic_name] = _create_tf_message_subscription(topic_name, topic_options);
         } else if (topic_type == "nav_msgs/msg/Odometry") {
-            _topic_to_subscription[topic_name] =
-                _create_odometry_subscription(topic_name, topic_options);
+            _topic_to_subscription[topic_name] = _create_odometry_subscription(topic_name, topic_options);
         } else if (topic_type == "sensor_msgs/msg/CameraInfo") {
-            _topic_to_subscription[topic_name] =
-                _create_camera_info_subscription(topic_name, topic_options);
+            _topic_to_subscription[topic_name] = _create_camera_info_subscription(topic_name, topic_options);
         } else if (topic_type == "sensor_msgs/msg/PointCloud2") {
-            _topic_to_subscription[topic_name] =
-                _create_point_cloud2_subscription(topic_name, topic_options);
+            _topic_to_subscription[topic_name] = _create_point_cloud2_subscription(topic_name, topic_options);
         }
     }
 }
@@ -335,33 +360,24 @@ void RerunLoggerNode::_update_tf() {
         return;
     }
 
-    for (const auto& [frame, entity_path] : _tf_frame_to_entity_path) {
+    for (const auto &[frame, entity_path] : _tf_frame_to_entity_path) {
         auto parent = _tf_frame_to_parent.find(frame);
         if (parent == _tf_frame_to_parent.end() or parent->second.empty()) {
             continue;
         }
         try {
-            auto transform = std::make_shared<geometry_msgs::msg::TransformStamped>(
-                _tf_buffer->lookupTransform(parent->second, frame, now - rclcpp::Duration(1, 0))
-            );
+            auto transform =
+                std::make_shared<geometry_msgs::msg::TransformStamped>(_tf_buffer->lookupTransform(parent->second, frame, now - rclcpp::Duration(1, 0)));
             log_transform(_rec, entity_path, transform);
             _last_tf_update_time = now;
-        } catch (tf2::TransformException& ex) {
-            RCLCPP_WARN_THROTTLE(
-                this->get_logger(),
-                *this->get_clock(),
-                1000,
-                "Could not lookup transform: %s",
-                ex.what()
-            );
+        } catch (tf2::TransformException &ex) {
+            RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "Could not lookup transform: %s", ex.what());
         }
     }
 }
 
-std::shared_ptr<rclcpp::Subscription<sensor_msgs::msg::Image>>
-    RerunLoggerNode::_create_image_subscription(
-        const std::string& topic, const TopicOptions& topic_options
-    ) {
+std::shared_ptr<rclcpp::Subscription<sensor_msgs::msg::Image>> RerunLoggerNode::_create_image_subscription(const std::string &topic,
+                                                                                                           const TopicOptions &topic_options) {
     std::string entity_path = _resolve_entity_path(topic, topic_options);
     bool lookup_transform = (topic_options.find("entity_path") == topic_options.end());
     bool restamp = false;
@@ -374,35 +390,19 @@ std::shared_ptr<rclcpp::Subscription<sensor_msgs::msg::Image>>
     rclcpp::SubscriptionOptions subscription_options;
     subscription_options.callback_group = _parallel_callback_group;
 
-    RCLCPP_INFO(
-        this->get_logger(),
-        "Subscribing to Image topic %s, logging to entity path %s",
-        topic.c_str(),
-        entity_path.c_str()
-    );
+    RCLCPP_INFO(this->get_logger(), "Subscribing to Image topic %s, logging to entity path %s", topic.c_str(), entity_path.c_str());
 
     return this->create_subscription<sensor_msgs::msg::Image>(
-        topic,
-        1000,
-        [&, entity_path, lookup_transform, restamp, image_options](
-            const sensor_msgs::msg::Image::SharedPtr msg
-        ) {
-            _handle_msg_header(
-                restamp,
-                lookup_transform,
-                parent_entity_path(entity_path),
-                msg->header
-            );
+        topic, 1000,
+        [&, entity_path, lookup_transform, restamp, image_options](const sensor_msgs::msg::Image::SharedPtr msg) {
+            _handle_msg_header(restamp, lookup_transform, parent_entity_path(entity_path), msg->header);
             log_image(_rec, entity_path, msg, image_options);
         },
-        subscription_options
-    );
+        subscription_options);
 }
 
-std::shared_ptr<rclcpp::Subscription<sensor_msgs::msg::Imu>>
-    RerunLoggerNode::_create_imu_subscription(
-        const std::string& topic, const TopicOptions& topic_options
-    ) {
+std::shared_ptr<rclcpp::Subscription<sensor_msgs::msg::Imu>> RerunLoggerNode::_create_imu_subscription(const std::string &topic,
+                                                                                                       const TopicOptions &topic_options) {
     std::string entity_path = _resolve_entity_path(topic, topic_options);
     bool restamp = false;
     if (topic_options.find("restamp") != topic_options.end()) {
@@ -413,20 +413,16 @@ std::shared_ptr<rclcpp::Subscription<sensor_msgs::msg::Imu>>
     subscription_options.callback_group = _parallel_callback_group;
 
     return this->create_subscription<sensor_msgs::msg::Imu>(
-        topic,
-        1000,
+        topic, 1000,
         [&, entity_path, restamp](const sensor_msgs::msg::Imu::SharedPtr msg) {
             _handle_msg_header(restamp, false, entity_path, msg->header);
             log_imu(_rec, entity_path, msg);
         },
-        subscription_options
-    );
+        subscription_options);
 }
 
-std::shared_ptr<rclcpp::Subscription<geometry_msgs::msg::PoseStamped>>
-    RerunLoggerNode::_create_pose_stamped_subscription(
-        const std::string& topic, const TopicOptions& topic_options
-    ) {
+std::shared_ptr<rclcpp::Subscription<geometry_msgs::msg::PoseStamped>> RerunLoggerNode::_create_pose_stamped_subscription(const std::string &topic,
+                                                                                                                          const TopicOptions &topic_options) {
     std::string entity_path = _resolve_entity_path(topic, topic_options);
     bool lookup_transform = (topic_options.find("entity_path") == topic_options.end());
     bool restamp = false;
@@ -438,41 +434,28 @@ std::shared_ptr<rclcpp::Subscription<geometry_msgs::msg::PoseStamped>>
     subscription_options.callback_group = _parallel_callback_group;
 
     return this->create_subscription<geometry_msgs::msg::PoseStamped>(
-        topic,
-        1000,
-        [&, entity_path, lookup_transform, restamp](
-            const geometry_msgs::msg::PoseStamped::SharedPtr msg
-        ) {
+        topic, 1000,
+        [&, entity_path, lookup_transform, restamp](const geometry_msgs::msg::PoseStamped::SharedPtr msg) {
             _handle_msg_header(restamp, lookup_transform, entity_path, msg->header);
             log_pose_stamped(_rec, entity_path, msg);
         },
-        subscription_options
-    );
+        subscription_options);
 }
 
-std::shared_ptr<rclcpp::Subscription<tf2_msgs::msg::TFMessage>>
-    RerunLoggerNode::_create_tf_message_subscription(
-        const std::string& topic, const TopicOptions& topic_options
-    ) {
+std::shared_ptr<rclcpp::Subscription<tf2_msgs::msg::TFMessage>> RerunLoggerNode::_create_tf_message_subscription(const std::string &topic,
+                                                                                                                 const TopicOptions &topic_options) {
     std::string entity_path = _resolve_entity_path(topic, topic_options);
 
     rclcpp::SubscriptionOptions subscription_options;
     subscription_options.callback_group = _parallel_callback_group;
 
     return this->create_subscription<tf2_msgs::msg::TFMessage>(
-        topic,
-        1000,
-        [&, entity_path](const tf2_msgs::msg::TFMessage::SharedPtr msg) {
-            log_tf_message(_rec, _tf_frame_to_entity_path, msg);
-        },
-        subscription_options
-    );
+        topic, 1000, [&, entity_path](const tf2_msgs::msg::TFMessage::SharedPtr msg) { log_tf_message(_rec, _tf_frame_to_entity_path, msg); },
+        subscription_options);
 }
 
-std::shared_ptr<rclcpp::Subscription<nav_msgs::msg::Odometry>>
-    RerunLoggerNode::_create_odometry_subscription(
-        const std::string& topic, const TopicOptions& topic_options
-    ) {
+std::shared_ptr<rclcpp::Subscription<nav_msgs::msg::Odometry>> RerunLoggerNode::_create_odometry_subscription(const std::string &topic,
+                                                                                                              const TopicOptions &topic_options) {
     std::string entity_path = _resolve_entity_path(topic, topic_options);
     bool lookup_transform = (topic_options.find("entity_path") == topic_options.end());
     bool restamp = false;
@@ -484,20 +467,16 @@ std::shared_ptr<rclcpp::Subscription<nav_msgs::msg::Odometry>>
     subscription_options.callback_group = _parallel_callback_group;
 
     return this->create_subscription<nav_msgs::msg::Odometry>(
-        topic,
-        1000,
+        topic, 1000,
         [&, entity_path, lookup_transform, restamp](const nav_msgs::msg::Odometry::SharedPtr msg) {
             _handle_msg_header(restamp, lookup_transform, entity_path, msg->header);
             log_odometry(_rec, entity_path, msg);
         },
-        subscription_options
-    );
+        subscription_options);
 }
 
-std::shared_ptr<rclcpp::Subscription<sensor_msgs::msg::CameraInfo>>
-    RerunLoggerNode::_create_camera_info_subscription(
-        const std::string& topic, const TopicOptions& topic_options
-    ) {
+std::shared_ptr<rclcpp::Subscription<sensor_msgs::msg::CameraInfo>> RerunLoggerNode::_create_camera_info_subscription(const std::string &topic,
+                                                                                                                      const TopicOptions &topic_options) {
     std::string entity_path = _resolve_entity_path(topic, topic_options);
     bool restamp = false;
     if (topic_options.find("restamp") != topic_options.end()) {
@@ -515,20 +494,16 @@ std::shared_ptr<rclcpp::Subscription<sensor_msgs::msg::CameraInfo>>
     }
 
     return this->create_subscription<sensor_msgs::msg::CameraInfo>(
-        topic,
-        1,
+        topic, 1,
         [&, entity_path, restamp](const sensor_msgs::msg::CameraInfo::SharedPtr msg) {
             _handle_msg_header(restamp, false, entity_path, msg->header);
             log_camera_info(_rec, entity_path, msg);
         },
-        subscription_options
-    );
+        subscription_options);
 }
 
-std::shared_ptr<rclcpp::Subscription<sensor_msgs::msg::PointCloud2>>
-    RerunLoggerNode::_create_point_cloud2_subscription(
-        const std::string& topic, const TopicOptions& topic_options
-    ) {
+std::shared_ptr<rclcpp::Subscription<sensor_msgs::msg::PointCloud2>> RerunLoggerNode::_create_point_cloud2_subscription(const std::string &topic,
+                                                                                                                        const TopicOptions &topic_options) {
     std::string entity_path = _resolve_entity_path(topic, topic_options);
     bool lookup_transform = (topic_options.find("entity_path") == topic_options.end());
     bool restamp = false;
@@ -540,47 +515,34 @@ std::shared_ptr<rclcpp::Subscription<sensor_msgs::msg::PointCloud2>>
     rclcpp::SubscriptionOptions subscription_options;
     subscription_options.callback_group = _parallel_callback_group;
 
-    RCLCPP_INFO(
-        this->get_logger(),
-        "Subscribing to PointCloud2 topic %s, logging to entity path %s",
-        topic.c_str(),
-        entity_path.c_str()
-    );
+    RCLCPP_INFO(this->get_logger(), "Subscribing to PointCloud2 topic %s, logging to entity path %s", topic.c_str(), entity_path.c_str());
 
     return this->create_subscription<sensor_msgs::msg::PointCloud2>(
-        topic,
-        1000,
-        [&, entity_path, lookup_transform, restamp, point_cloud2_options](
-            const sensor_msgs::msg::PointCloud2::SharedPtr msg
-        ) {
+        topic, 1000,
+        [&, entity_path, lookup_transform, restamp, point_cloud2_options](const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
             _handle_msg_header(restamp, lookup_transform, entity_path, msg->header);
             log_point_cloud2(_rec, entity_path, msg, point_cloud2_options);
         },
-        subscription_options
-    );
+        subscription_options);
 }
 
-void RerunLoggerNode::_handle_msg_header(
-    bool restamp, bool lookup_transform, const std::string& entity_path,
-    std_msgs::msg::Header& header
-) {
+void RerunLoggerNode::_handle_msg_header(bool restamp, bool lookup_transform, const std::string &entity_path, std_msgs::msg::Header &header) {
     if (restamp) {
         auto now = this->get_clock()->now();
         header.stamp = now;
     }
     if (!_root_frame.empty() && lookup_transform) {
         try {
-            auto transform = std::make_shared<geometry_msgs::msg::TransformStamped>(
-                _tf_buffer->lookupTransform(_root_frame, header.frame_id, header.stamp, 100ms)
-            );
+            auto transform =
+                std::make_shared<geometry_msgs::msg::TransformStamped>(_tf_buffer->lookupTransform(_root_frame, header.frame_id, header.stamp, 100ms));
             log_transform(_rec, entity_path, transform);
-        } catch (tf2::TransformException& ex) {
+        } catch (tf2::TransformException &ex) {
             RCLCPP_WARN(this->get_logger(), "%s", ex.what());
         }
     }
 }
 
-int main(int argc, char** argv) {
+int main(int argc, char **argv) {
     rclcpp::init(argc, argv);
     rclcpp::executors::MultiThreadedExecutor executor;
 

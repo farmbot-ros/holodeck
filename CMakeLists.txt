@@ -34,8 +34,7 @@ install(
 
 
 set(executables
-    rerun
-    visualizer_node
+    pose
 )
 
 find_package(ament_cmake REQUIRED)
