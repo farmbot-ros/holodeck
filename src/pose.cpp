@@ -44,7 +44,6 @@ class Beacon {
 
   public:
     Beacon(rclcpp::Node::SharedPtr node) : node(node) {
-        // echo::info("Rerun for pose created");
         RCLCPP_INFO(node->get_logger(), "Rerun for pose created");
         tcp = node->get_parameter_or<std::string>("tcp", "127.0.0.1:9876");
         trajectory = node->get_parameter_or<int>("trajectory", 100);
@@ -64,7 +63,6 @@ class Beacon {
         colors.push_back(rerun::Color(dis(gen), dis(gen), dis(gen)));
 
         if (rec->spawn().is_err()) {
-            // echo::warn("Could not spawn viewer");
             RCLCPP_WARN(node->get_logger(), "Could not spawn viewer");
         }
 
@@ -80,8 +78,7 @@ class Beacon {
   private:
     void robo_pose_callback(const nav_msgs::msg::Odometry::SharedPtr msg) {
         counter_pos++;
-        // echo::info("Robo pose callback");
-        RCLCPP_INFO(node->get_logger(), "Robo pose callback");
+        // RCLCPP_INFO(node->get_logger(), "Robo pose callback");
         auto x = float(msg->pose.pose.position.x);
         auto y = float(msg->pose.pose.position.y);
         auto z = float(msg->pose.pose.position.z);
@@ -111,8 +108,7 @@ class Beacon {
 
     void robo_gps_callback(const sensor_msgs::msg::NavSatFix::SharedPtr msg) {
         counter_loc++;
-        // echo::info("Robo gps callback");
-        RCLCPP_INFO(node->get_logger(), "Robo gps callback");
+        // RCLCPP_INFO(node->get_logger(), "Robo gps callback");
         auto lat = float(msg->latitude);
         auto lon = float(msg->longitude);
 
@@ -137,7 +133,6 @@ class Beacon {
         auto dy = pos1[1] - pos2[1];
         auto dz = pos1[2] - pos2[2];
         auto distance = sqrt(dx * dx + dy * dy + dz * dz);
-        // echo::info("Distance: %f", distance);
         RCLCPP_INFO(node->get_logger(), "Distance: %f", distance);
         return distance;
     }
@@ -146,7 +141,6 @@ class Beacon {
         auto dx = loc1.latitude() - loc2.latitude();
         auto dy = loc1.longitude() - loc2.longitude();
         auto distance = sqrt(dx * dx + dy * dy);
-        // echo::info("Distance: %f", distance);
         RCLCPP_INFO(node->get_logger(), "Distance: %f", distance);
         return distance;
     }

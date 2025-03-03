@@ -11,14 +11,17 @@
 #include <ctime>
 #include <nav_msgs/msg/odometry.hpp>
 #include <random>
-#include <rclcpp/publisher.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/nav_sat_fix.hpp>
 #include <shared_mutex>
 #include <std_msgs/msg/string.hpp>
 
+#include <farmbot_interfaces/msg/polygon_array.hpp>
+#include <farmbot_interfaces/msg/swaths.hpp>
+#include <geometry_msgs/msg/polygon_stamped.hpp>
 #include <rerun.hpp>
 #include <rerun/demo_utils.hpp>
+
 using namespace rerun::demo;
 using namespace std::chrono_literals;
 using namespace std::placeholders;
@@ -29,26 +32,27 @@ class Beacon {
     rclcpp::Node::SharedPtr node;
     std::string tcp;
     std::random_device rd;
-    int trajectory;
     std::shared_ptr<rerun::RecordingStream> rec;
-    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr publisher;
-    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr robo_pose;
-    rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr gps_pose;
-    std::vector<rerun::Color> colors;
 
-    int counter_pos = 0;
-    int counter_loc = 0;
-    int every = 100;
-    std::vector<std::array<float, 3>> positions;
-    std::vector<rerun::LatLon> locations;
+    geometry_msgs::msg::PolygonStamped border_;
+    bool got_border_ = false;
+    farmbot_interfaces::msg::PolygonArray headlands_;
+    bool got_headlands_ = false;
+    farmbot_interfaces::msg::Swaths swaths_;
+    bool got_swaths_ = false;
+
+    rclcpp::Subscription<farmbot_interfaces::msg::PolygonArray>::SharedPtr headlands_subscriber;
+    rclcpp::Subscription<farmbot_interfaces::msg::Swaths>::SharedPtr swaths_subscriber;
+    rclcpp::Subscription<geometry_msgs::msg::PolygonStamped>::SharedPtr border_subscriber;
+
+    // timer publish
+    rclcpp::TimerBase::SharedPtr timer;
 
   public:
     Beacon(rclcpp::Node::SharedPtr node) : node(node) {
         // echo::info("Rerun for pose created");
         RCLCPP_INFO(node->get_logger(), "Rerun for pose created");
         tcp = node->get_parameter_or<std::string>("tcp", "127.0.0.1:9876");
-        trajectory = node->get_parameter_or<int>("trajectory", 100);
-        RCLCPP_INFO(node->get_logger(), "Trajectory length: %d", trajectory);
 
         namespace_ = node->get_namespace();
         if (!namespace_.empty() && namespace_[0] == '/') {
@@ -59,87 +63,46 @@ class Beacon {
         RCLCPP_INFO(node->get_logger(), "Connecting to %s", tcp.c_str());
         auto _one = rec->connect_tcp(tcp);
 
-        std::mt19937 gen(rd());
-        std::uniform_int_distribution<uint8_t> dis(0, 255);
-        colors.push_back(rerun::Color(dis(gen), dis(gen), dis(gen)));
-
         if (rec->spawn().is_err()) {
             // echo::warn("Could not spawn viewer");
             RCLCPP_WARN(node->get_logger(), "Could not spawn viewer");
         }
 
-        robo_pose = node->create_subscription<nav_msgs::msg::Odometry>(
-            "loc/odom", 10, std::bind(&Beacon::robo_pose_callback, this, _1));
+        // timer publish
+        timer = node->create_wall_timer(100ms, std::bind(&Beacon::publish, this));
 
-        gps_pose = node->create_subscription<sensor_msgs::msg::NavSatFix>(
-            "loc/fix", 10, std::bind(&Beacon::robo_gps_callback, this, _1));
+        headlands_subscriber = node->create_subscription<farmbot_interfaces::msg::PolygonArray>(
+            "pln/headlands", 10, std::bind(&Beacon::headlands_callback, this, _1));
+
+        swaths_subscriber = node->create_subscription<farmbot_interfaces::msg::Swaths>(
+            "pln/swaths", 10, std::bind(&Beacon::swaths_callback, this, _1));
+
+        border_subscriber = node->create_subscription<geometry_msgs::msg::PolygonStamped>(
+            "pln/border", 10, std::bind(&Beacon::border_callback, this, _1));
     }
 
     ~Beacon() { rclcpp::shutdown(); }
 
   private:
-    void robo_pose_callback(const nav_msgs::msg::Odometry::SharedPtr msg) {
-        counter_pos++;
-        // echo::info("Robo pose callback");
-        RCLCPP_INFO(node->get_logger(), "Robo pose callback");
-        auto x = float(msg->pose.pose.position.x);
-        auto y = float(msg->pose.pose.position.y);
-        auto z = float(msg->pose.pose.position.z);
+    void headlands_callback(const farmbot_interfaces::msg::PolygonArray::SharedPtr msg) {
+        headlands_ = *msg;
+        got_headlands_ = true;
+    }
 
-        std::vector<rerun::Position3D> points;
-        points.push_back(rerun::Position3D(x, y, z));
+    void swaths_callback(const farmbot_interfaces::msg::Swaths::SharedPtr msg) {
+        swaths_ = *msg;
+        got_swaths_ = true;
+    }
 
-        rec->log_static("world/map/" + namespace_, rerun::Points3D(points).with_colors(colors).with_radii({2.f}));
+    void border_callback(const geometry_msgs::msg::PolygonStamped::SharedPtr msg) {
+        border_ = *msg;
+        got_border_ = true;
+    }
 
-        if (counter_pos % every == 0) {
-            positions.push_back({x, y, z});
-            auto linestrip = rerun::components::LineStrip3D(positions);
-            rec->log_static("world/map/" + namespace_ + "/trajectory",
-                            rerun::LineStrips3D(linestrip).with_colors({colors}));
+    void publish() {
+        if (!got_border_) {
+            return;
         }
-    }
-
-    void robo_gps_callback(const sensor_msgs::msg::NavSatFix::SharedPtr msg) {
-        counter_loc++;
-        // echo::info("Robo gps callback");
-        RCLCPP_INFO(node->get_logger(), "Robo gps callback");
-        auto lat = float(msg->latitude);
-        auto lon = float(msg->longitude);
-
-        std::vector<rerun::LatLon> locators;
-        locators.push_back(rerun::LatLon(lat, lon));
-
-        rec->log_static("world/map/" + namespace_,
-                        rerun::GeoPoints::from_lat_lon(locators).with_colors(colors).with_radii({2.f}));
-
-        // float delta = delta_distance(rerun::LatLon(lat, lon), locations.back());
-
-        if (counter_loc % every == 0) {
-            locations.push_back(locators.back());
-            auto linesting = rerun::components::GeoLineString::from_lat_lon(locations);
-            rec->log_static("world/map/" + namespace_ + "/trajectory",
-                            rerun::GeoLineStrings(linesting).with_colors({colors}));
-        }
-    }
-
-    float delta_distance(std::array<float, 3> pos1, std::array<float, 3> pos2) {
-        auto dx = pos1[0] - pos2[0];
-        auto dy = pos1[1] - pos2[1];
-        auto dz = pos1[2] - pos2[2];
-        auto distance = sqrt(dx * dx + dy * dy + dz * dz);
-        // echo::info("Distance: %f", distance);
-        RCLCPP_INFO(node->get_logger(), "Distance: %f", distance);
-
-        return distance;
-    }
-
-    float delta_distance(rerun::LatLon loc1, rerun::LatLon loc2) {
-        auto dx = loc1.latitude() - loc2.latitude();
-        auto dy = loc1.longitude() - loc2.longitude();
-        auto distance = sqrt(dx * dx + dy * dy);
-        // echo::info("Distance: %f", distance);
-        RCLCPP_INFO(node->get_logger(), "Distance: %f", distance);
-        return distance;
     }
 };
 
