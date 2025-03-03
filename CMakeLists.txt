@@ -35,6 +35,7 @@ install(
 
 set(executables
     pose
+    field
 )
 
 find_package(ament_cmake REQUIRED)
@@ -99,7 +100,6 @@ include_directories(${Eigen_INCLUDE_DIRS})
 link_directories(${Eigen_LIBRARY_DIRS})
 add_definitions(${Eigen_DEFINITIONS})
 find_package(OpenCV REQUIRED)
-find_package(fmt REQUIRED)
 find_package(PCL REQUIRED)
 include_directories(${PCL_INCLUDE_DIRS})
 link_directories(${PCL_LIBRARY_DIRS})
@@ -110,7 +110,6 @@ find_package(yaml-cpp REQUIRED)
 
 set(dependencies_sys
     rerun_sdk
-    fmt::fmt
     ${Boost_LIBRARIES}
     ${OpenCV_LIBS}
     ${PCL_LIBRARIES}
@@ -123,19 +122,19 @@ set(libraries
     rerun_ros_interface
 )
 
-foreach(library ${libraries})
-    add_library(${library} lib/${library}.cpp)
-    target_include_directories(${library} PUBLIC include)
-    ament_target_dependencies(${library} ${dependencies_ros})
-    target_link_libraries(${library} ${dependencies_sys})
-endforeach()
+# foreach(library ${libraries})
+#     add_library(${library} lib/${library}.cpp)
+#     target_include_directories(${library} PUBLIC include)
+#     ament_target_dependencies(${library} ${dependencies_ros})
+#     target_link_libraries(${library} ${dependencies_sys})
+# endforeach()
 
 foreach(executable ${executables})
     add_executable(${executable} src/${executable}.cpp)
     target_include_directories(${executable} PUBLIC include)
     ament_target_dependencies(${executable} ${dependencies_ros})
     target_link_libraries(${executable} ${dependencies_sys})
-    target_link_libraries(${executable} ${libraries})
+    # target_link_libraries(${executable} ${libraries})
     # target_compile_options(${executable} PRIVATE -Wno-unused-parameter)
 endforeach()
 

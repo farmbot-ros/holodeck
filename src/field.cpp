@@ -89,17 +89,7 @@ class Beacon {
         std::vector<rerun::Position3D> points;
         points.push_back(rerun::Position3D(x, y, z));
 
-        // rec->log_static("world/map/" + namespace_,
-        //                 rerun::Transform3D(rerun::components::Translation3D(x, y, z),
-        //                                    rerun::Quaternion::from_wxyz(msg->pose.pose.orientation.w,
-        //                                    msg->pose.pose.orientation.x,
-        //                                                                 msg->pose.pose.orientation.y,
-        //                                                                 msg->pose.pose.orientation.z)));
         rec->log_static("world/map/" + namespace_, rerun::Points3D(points).with_colors(colors).with_radii({2.f}));
-
-        // float delta = delta_distance({static_cast<float>(msg->pose.pose.position.x),
-        // static_cast<float>(msg->pose.pose.position.y), static_cast<float>(msg->pose.pose.position.z)},
-        // positions.back());
 
         if (counter_pos % every == 0) {
             positions.push_back({x, y, z});
@@ -139,6 +129,7 @@ class Beacon {
         auto distance = sqrt(dx * dx + dy * dy + dz * dz);
         // echo::info("Distance: %f", distance);
         RCLCPP_INFO(node->get_logger(), "Distance: %f", distance);
+
         return distance;
     }
 
