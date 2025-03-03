@@ -1,10 +1,12 @@
 #include "rerun/archetypes/geo_line_strings.hpp"
 #include "rerun/archetypes/geo_points.hpp"
+#include "rerun/archetypes/line_strips2d.hpp"
 #include "rerun/archetypes/line_strips3d.hpp"
 #include "rerun/archetypes/points3d.hpp"
 #include "rerun/archetypes/transform3d.hpp"
 #include "rerun/components/geo_line_string.hpp"
 #include "rerun/components/lat_lon.hpp"
+#include "rerun/components/line_strip3d.hpp"
 #include "rerun/recording_stream.hpp"
 #include <cmath>
 #include <cstdint>
@@ -21,6 +23,7 @@
 #include <geometry_msgs/msg/polygon_stamped.hpp>
 #include <rerun.hpp>
 #include <rerun/demo_utils.hpp>
+#include <vector>
 
 using namespace rerun::demo;
 using namespace std::chrono_literals;
@@ -34,11 +37,11 @@ class Beacon {
     std::random_device rd;
     std::shared_ptr<rerun::RecordingStream> rec;
 
-    geometry_msgs::msg::PolygonStamped border_;
+    std::vector<std::array<float, 3>> border_positions_;
     bool got_border_ = false;
-    farmbot_interfaces::msg::PolygonArray headlands_;
+    std::vector<std::vector<std::array<float, 3>>> headland_positions_;
     bool got_headlands_ = false;
-    farmbot_interfaces::msg::Swaths swaths_;
+    std::vector<std::vector<std::array<float, 3>>> swaths_positions_;
     bool got_swaths_ = false;
 
     rclcpp::Subscription<farmbot_interfaces::msg::PolygonArray>::SharedPtr headlands_subscriber;
@@ -69,7 +72,7 @@ class Beacon {
         }
 
         // timer publish
-        timer = node->create_wall_timer(100ms, std::bind(&Beacon::publish, this));
+        timer = node->create_wall_timer(1s, std::bind(&Beacon::publish, this));
 
         headlands_subscriber = node->create_subscription<farmbot_interfaces::msg::PolygonArray>(
             "pln/headlands", 10, std::bind(&Beacon::headlands_callback, this, _1));
@@ -85,25 +88,43 @@ class Beacon {
 
   private:
     void headlands_callback(const farmbot_interfaces::msg::PolygonArray::SharedPtr msg) {
-        headlands_ = *msg;
+        if (!got_headlands_) {
+            for (auto polygon : msg->polygons) {
+                std::vector<std::array<float, 3>> points;
+                for (auto point : polygon.polygon.points) {
+                    points.push_back({point.x, point.y, 0});
+                }
+                headland_positions_.push_back(points);
+            }
+        }
+        RCLCPP_INFO(node->get_logger(), "Publishing headlands");
+        for (auto points : headland_positions_) {
+            auto headland__ = rerun::components::LineStrip3D(points);
+            rec->log_static("world/map/" + namespace_ + "/field/headland",
+                            rerun::LineStrips3D(headland__).with_colors({{0, 0, 255}}).with_radii({{0.1f}}));
+        }
         got_headlands_ = true;
     }
 
     void swaths_callback(const farmbot_interfaces::msg::Swaths::SharedPtr msg) {
-        swaths_ = *msg;
-        got_swaths_ = true;
+        // swaths_ = *msg;
+        // got_swaths_ = true;
     }
 
     void border_callback(const geometry_msgs::msg::PolygonStamped::SharedPtr msg) {
-        border_ = *msg;
+        if (!got_border_) {
+            for (auto point : msg->polygon.points) {
+                border_positions_.push_back({point.x, point.y, 0});
+            }
+        }
+        RCLCPP_INFO(node->get_logger(), "Publishing border");
+        auto border__ = rerun::components::LineStrip3D(border_positions_);
+        rec->log_static("world/map/" + namespace_ + "/field/border",
+                        rerun::LineStrips3D(border__).with_colors({{0, 0, 255}}).with_radii({{0.1f}}));
         got_border_ = true;
     }
 
-    void publish() {
-        if (!got_border_) {
-            return;
-        }
-    }
+    void publish() {}
 };
 
 int main(int argc, char **argv) {
