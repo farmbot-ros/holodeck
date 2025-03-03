@@ -92,7 +92,7 @@ class Beacon {
         //                                    msg->pose.pose.orientation.x,
         //                                                                 msg->pose.pose.orientation.y,
         //                                                                 msg->pose.pose.orientation.z)));
-        rec->log_static("world/map/" + namespace_, rerun::Points3D(points).with_colors(colors).with_radii({2.f}));
+        rec->log_static("world/map/" + namespace_, rerun::Points3D(points).with_colors(colors).with_radii({1.f}));
 
         // float delta = delta_distance({static_cast<float>(msg->pose.pose.position.x),
         // static_cast<float>(msg->pose.pose.position.y), static_cast<float>(msg->pose.pose.position.z)},
@@ -116,7 +116,7 @@ class Beacon {
         locators.push_back(rerun::LatLon(lat, lon));
 
         rec->log_static("world/map/" + namespace_,
-                        rerun::GeoPoints::from_lat_lon(locators).with_colors(colors).with_radii({2.f}));
+                        rerun::GeoPoints::from_lat_lon(locators).with_colors(colors).with_radii({1.f}));
 
         // float delta = delta_distance(rerun::LatLon(lat, lon), locations.back());
 
