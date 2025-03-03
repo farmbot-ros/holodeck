@@ -105,8 +105,18 @@ class Beacon {
     }
 
     void swaths_callback(const farmbot_interfaces::msg::Swaths::SharedPtr msg) {
-        // swaths_ = *msg;
-        // got_swaths_ = true;
+        if (!got_swaths_) {
+            for (auto swath : msg->swaths) {
+                std::vector<std::array<float, 3>> points;
+                points.push_back({swath.line.points[0].x, swath.line.points[0].y, 0});
+                points.push_back({swath.line.points[1].x, swath.line.points[1].y, 0});
+                swaths_positions_.push_back(points);
+            }
+        }
+        RCLCPP_INFO(node->get_logger(), "Publishing swaths");
+        rec->log_static("world/map/" + namespace_ + "/field/swaths",
+                        rerun::LineStrips3D(swaths_positions_).with_colors({{0, 0, 255}}).with_radii({{0.2f}}));
+        got_swaths_ = true;
     }
 
     void border_callback(const geometry_msgs::msg::PolygonStamped::SharedPtr msg) {
