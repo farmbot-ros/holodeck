@@ -4,6 +4,7 @@
 #include "rerun/archetypes/line_strips3d.hpp"
 #include "rerun/archetypes/points3d.hpp"
 #include "rerun/archetypes/transform3d.hpp"
+#include "rerun/collection.hpp"
 #include "rerun/components/geo_line_string.hpp"
 #include "rerun/components/lat_lon.hpp"
 #include "rerun/components/line_strip3d.hpp"
@@ -98,11 +99,8 @@ class Beacon {
             }
         }
         RCLCPP_INFO(node->get_logger(), "Publishing headlands");
-        for (auto points : headland_positions_) {
-            auto headland__ = rerun::components::LineStrip3D(points);
-            rec->log_static("world/map/" + namespace_ + "/field/headland",
-                            rerun::LineStrips3D(headland__).with_colors({{0, 0, 255}}).with_radii({{0.1f}}));
-        }
+        rec->log_static("world/map/" + namespace_ + "/field/headland",
+                        rerun::LineStrips3D(headland_positions_).with_colors({{0, 0, 255}}).with_radii({{0.2f}}));
         got_headlands_ = true;
     }
 
@@ -120,7 +118,7 @@ class Beacon {
         RCLCPP_INFO(node->get_logger(), "Publishing border");
         auto border__ = rerun::components::LineStrip3D(border_positions_);
         rec->log_static("world/map/" + namespace_ + "/field/border",
-                        rerun::LineStrips3D(border__).with_colors({{0, 0, 255}}).with_radii({{0.1f}}));
+                        rerun::LineStrips3D(border__).with_colors({{0, 0, 255}}).with_radii({{0.2f}}));
         got_border_ = true;
     }
 
