@@ -23,6 +23,19 @@ using namespace rerun::demo;
 using namespace std::chrono_literals;
 using namespace std::placeholders;
 
+rerun::Color hexToColor(const std::string &hex) {
+    if (hex.size() != 7 || hex[0] != '#') {
+        throw std::invalid_argument("Invalid hex color format. Expected format: #RRGGBB");
+    }
+    uint8_t r, g, b;
+    std::istringstream(hex.substr(1, 2)) >> std::hex >> r;
+    std::istringstream(hex.substr(3, 2)) >> std::hex >> g;
+    std::istringstream(hex.substr(5, 2)) >> std::hex >> b;
+
+    rerun::Color color(r, g, b);
+    return color;
+}
+
 class Beacon {
   private:
     std::string namespace_;
@@ -30,6 +43,7 @@ class Beacon {
     std::string tcp;
     std::random_device rd;
     int trajectory;
+    std::string color;
     std::shared_ptr<rerun::RecordingStream> rec;
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr publisher;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr robo_pose;
@@ -48,6 +62,7 @@ class Beacon {
         tcp = node->get_parameter_or<std::string>("tcp", "127.0.0.1:9876");
         trajectory = node->get_parameter_or<int>("trajectory", 100);
         RCLCPP_INFO(node->get_logger(), "Trajectory length: %d", trajectory);
+        color = node->get_parameter_or<std::string>("color", "#ff0000");
 
         namespace_ = node->get_namespace();
         if (!namespace_.empty() && namespace_[0] == '/') {
@@ -58,9 +73,12 @@ class Beacon {
         RCLCPP_INFO(node->get_logger(), "Connecting to %s", tcp.c_str());
         auto _one = rec->connect_tcp(tcp);
 
-        std::mt19937 gen(rd());
-        std::uniform_int_distribution<uint8_t> dis(0, 255);
-        colors.push_back(rerun::Color(dis(gen), dis(gen), dis(gen)));
+        if (_one.is_err()) {
+            RCLCPP_ERROR(node->get_logger(), "Could not connect to %s", tcp.c_str());
+            return;
+        }
+
+        colors.push_back(hexToColor(color));
 
         if (rec->spawn().is_err()) {
             RCLCPP_WARN(node->get_logger(), "Could not spawn viewer");
@@ -92,7 +110,7 @@ class Beacon {
         //                                    msg->pose.pose.orientation.x,
         //                                                                 msg->pose.pose.orientation.y,
         //                                                                 msg->pose.pose.orientation.z)));
-        rec->log_static("world/map/" + namespace_, rerun::Points3D(points).with_colors(colors).with_radii({1.f}));
+        rec->log_static("world/map/" + namespace_, rerun::Points3D(points).with_colors(colors).with_radii({2.f}));
 
         // float delta = delta_distance({static_cast<float>(msg->pose.pose.position.x),
         // static_cast<float>(msg->pose.pose.position.y), static_cast<float>(msg->pose.pose.position.z)},
@@ -116,7 +134,7 @@ class Beacon {
         locators.push_back(rerun::LatLon(lat, lon));
 
         rec->log_static("world/map/" + namespace_,
-                        rerun::GeoPoints::from_lat_lon(locators).with_colors(colors).with_radii({1.f}));
+                        rerun::GeoPoints::from_lat_lon(locators).with_colors(colors).with_radii({2.f}));
 
         // float delta = delta_distance(rerun::LatLon(lat, lon), locations.back());
 

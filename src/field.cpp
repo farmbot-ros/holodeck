@@ -99,7 +99,7 @@ class Beacon {
             }
         }
         // RCLCPP_INFO(node->get_logger(), "Publishing headlands");
-        rec->log_static("world/map/" + namespace_ + "/field/headland",
+        rec->log_static("world/map/field/headland",
                         rerun::LineStrips3D(headland_positions_).with_colors({{0, 0, 255}}).with_radii({{0.2f}}));
         got_headlands_ = true;
     }
@@ -114,7 +114,7 @@ class Beacon {
             }
         }
         // RCLCPP_INFO(node->get_logger(), "Publishing swaths");
-        rec->log_static("world/map/" + namespace_ + "/field/swaths",
+        rec->log_static("world/map/field/swaths",
                         rerun::LineStrips3D(swaths_positions_).with_colors({{0, 0, 255}}).with_radii({{0.2f}}));
         got_swaths_ = true;
     }
@@ -127,7 +127,7 @@ class Beacon {
         }
         // RCLCPP_INFO(node->get_logger(), "Publishing border");
         auto border__ = rerun::components::LineStrip3D(border_positions_);
-        rec->log_static("world/map/" + namespace_ + "/field/border",
+        rec->log_static("world/map/field/border",
                         rerun::LineStrips3D(border__).with_colors({{0, 0, 255}}).with_radii({{0.2f}}));
         got_border_ = true;
     }
