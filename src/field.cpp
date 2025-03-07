@@ -38,7 +38,8 @@ class Beacon {
     std::shared_ptr<rerun::RecordingStream> rec;
 
     bool got_border_, got_headlands_, got_swaths_;
-    std::vector<std::array<float, 3>> loc_border_positions_, geo_border_positions_;
+    std::vector<std::array<float, 3>> loc_border_positions_;
+    std::vector<rerun::LatLon> geo_border_positions_;
     std::vector<std::vector<std::array<float, 3>>> loc_headland_positions_, geo_headland_positions_;
     std::vector<std::vector<std::array<float, 3>>> loc_swath_positions_, geo_swath_positions_;
 
@@ -129,12 +130,12 @@ class Beacon {
             for (auto line : msg->lines) {
                 float x = static_cast<float>(line.loc_line[0].x);
                 float y = static_cast<float>(line.loc_line[0].y);
-                float z = static_cast<float>(line.loc_line[0].z);
+                // float z = static_cast<float>(line.loc_line[0].z);
+                float z = 0.0;
                 loc_border_positions_.push_back({x, y, z});
                 float lat = static_cast<float>(line.geo_line[0].x);
                 float lon = static_cast<float>(line.geo_line[0].y);
-                float alt = static_cast<float>(line.geo_line[0].z);
-                geo_border_positions_.push_back({lat, lon, alt});
+                geo_border_positions_.push_back({lat, lon});
             }
             // RCLCPP_INFO(node->get_logger(), "Publishing border");
             rec->log_static("world/map/field/border",
@@ -142,7 +143,12 @@ class Beacon {
                                                rerun::Quaternion::from_wxyz(1.0, 0.0, 0.0, 0.0)));
             auto border__ = rerun::components::LineStrip3D(loc_border_positions_);
             rec->log_static("world/map/field/border",
-                            rerun::LineStrips3D(border__).with_colors({{158, 142, 158}}).with_radii({{0.2f}}));
+                            rerun::LineStrips3D(border__).with_colors({{0, 0, 255}}).with_radii({{0.2f}}));
+
+            auto linestring = rerun::components::GeoLineString::from_lat_lon(geo_border_positions_);
+            rec->log_static("world/map/field/border",
+                            rerun::GeoLineStrings(linestring).with_colors({{0, 0, 255}}).with_radii({{0.2f}}));
+
             got_border_ = true;
         }
     }
