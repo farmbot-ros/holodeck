@@ -24,16 +24,36 @@ using namespace std::chrono_literals;
 using namespace std::placeholders;
 
 rerun::Color hexToColor(const std::string &hex) {
-    if (hex.size() != 7 || hex[0] != '#') {
-        throw std::invalid_argument("Invalid hex color format. Expected format: #RRGGBB");
+    // Validate hex string
+    if (hex.empty() || hex[0] != '#') {
+        throw std::invalid_argument("Invalid hex color format. Expected format: #RRGGBB or #RGB");
     }
-    uint8_t r, g, b;
-    std::istringstream(hex.substr(1, 2)) >> std::hex >> r;
-    std::istringstream(hex.substr(3, 2)) >> std::hex >> g;
-    std::istringstream(hex.substr(5, 2)) >> std::hex >> b;
 
-    rerun::Color color(r, g, b);
-    return color;
+    std::string hexColor = hex.substr(1);
+    size_t length = hexColor.size();
+
+    if (length != 3 && length != 4 && length != 6 && length != 8) {
+        throw std::invalid_argument("Invalid hex color length. Expected 3, 4, 6, or 8 hex digits.");
+    }
+
+    // Expand shorthand hex notation (#RGB or #RGBA) to full form (#RRGGBB or #RRGGBBAA)
+    if (length == 3 || length == 4) {
+        std::string expanded;
+        for (char c : hexColor) {
+            expanded.push_back(c);
+            expanded.push_back(c);
+        }
+        hexColor = expanded;
+        length = hexColor.size();
+    }
+
+    // Parse the hex color
+    uint8_t r = std::stoul(hexColor.substr(0, 2), nullptr, 16);
+    uint8_t g = std::stoul(hexColor.substr(2, 2), nullptr, 16);
+    uint8_t b = std::stoul(hexColor.substr(4, 2), nullptr, 16);
+    uint8_t a = (length == 8) ? std::stoul(hexColor.substr(6, 2), nullptr, 16) : 255;
+
+    return rerun::Color(r, g, b, a);
 }
 
 class Beacon {
