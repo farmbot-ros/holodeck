@@ -17,44 +17,13 @@
 #include <shared_mutex>
 #include <std_msgs/msg/string.hpp>
 
+#include "farmbot_holodeck/color.hpp"
+
 #include <rerun.hpp>
 #include <rerun/demo_utils.hpp>
 using namespace rerun::demo;
 using namespace std::chrono_literals;
 using namespace std::placeholders;
-
-rerun::Color hexToColor(const std::string &hex) {
-    // Validate hex string
-    if (hex.empty() || hex[0] != '#') {
-        throw std::invalid_argument("Invalid hex color format. Expected format: #RRGGBB or #RGB");
-    }
-
-    std::string hexColor = hex.substr(1);
-    size_t length = hexColor.size();
-
-    if (length != 3 && length != 4 && length != 6 && length != 8) {
-        throw std::invalid_argument("Invalid hex color length. Expected 3, 4, 6, or 8 hex digits.");
-    }
-
-    // Expand shorthand hex notation (#RGB or #RGBA) to full form (#RRGGBB or #RRGGBBAA)
-    if (length == 3 || length == 4) {
-        std::string expanded;
-        for (char c : hexColor) {
-            expanded.push_back(c);
-            expanded.push_back(c);
-        }
-        hexColor = expanded;
-        length = hexColor.size();
-    }
-
-    // Parse the hex color
-    uint8_t r = std::stoul(hexColor.substr(0, 2), nullptr, 16);
-    uint8_t g = std::stoul(hexColor.substr(2, 2), nullptr, 16);
-    uint8_t b = std::stoul(hexColor.substr(4, 2), nullptr, 16);
-    uint8_t a = (length == 8) ? std::stoul(hexColor.substr(6, 2), nullptr, 16) : 255;
-
-    return rerun::Color(r, g, b, a);
-}
 
 class Beacon {
   private:
@@ -98,7 +67,7 @@ class Beacon {
             return;
         }
 
-        colors.push_back(hexToColor(color));
+        colors.push_back(holodeck::hexToColor(color));
 
         if (rec->spawn().is_err()) {
             RCLCPP_WARN(node->get_logger(), "Could not spawn viewer");
