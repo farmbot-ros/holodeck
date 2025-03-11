@@ -36,6 +36,7 @@ install(
 set(executables
     pose
     field
+    beacon
 )
 
 find_package(ament_cmake REQUIRED)

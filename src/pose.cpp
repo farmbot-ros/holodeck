@@ -25,7 +25,7 @@ using namespace rerun::demo;
 using namespace std::chrono_literals;
 using namespace std::placeholders;
 
-class Beacon {
+class PoseNode {
   private:
     std::string namespace_;
     rclcpp::Node::SharedPtr node;
@@ -46,7 +46,7 @@ class Beacon {
     std::vector<rerun::LatLon> locations;
 
   public:
-    Beacon(rclcpp::Node::SharedPtr node) : node(node) {
+    PoseNode(rclcpp::Node::SharedPtr node) : node(node) {
         RCLCPP_INFO(node->get_logger(), "Rerun for pose created");
         tcp = node->get_parameter_or<std::string>("tcp", "127.0.0.1:9876");
         trajectory = node->get_parameter_or<int>("trajectory", 100);
@@ -74,13 +74,13 @@ class Beacon {
         }
 
         robo_pose = node->create_subscription<nav_msgs::msg::Odometry>(
-            "loc/odom", 10, std::bind(&Beacon::robo_pose_callback, this, _1));
+            "loc/odom", 10, std::bind(&PoseNode::robo_pose_callback, this, _1));
 
         gps_pose = node->create_subscription<sensor_msgs::msg::NavSatFix>(
-            "loc/fix", 10, std::bind(&Beacon::robo_gps_callback, this, _1));
+            "loc/fix", 10, std::bind(&PoseNode::robo_gps_callback, this, _1));
     }
 
-    ~Beacon() { rclcpp::shutdown(); }
+    ~PoseNode() { rclcpp::shutdown(); }
 
   private:
     void robo_pose_callback(const nav_msgs::msg::Odometry::SharedPtr msg) {
@@ -161,7 +161,7 @@ int main(int argc, char **argv) {
     options_0.allow_undeclared_parameters(true);
     options_0.automatically_declare_parameters_from_overrides(true);
     auto node_0 = rclcpp::Node::make_shared("rerun", options_0);
-    auto parser = Beacon(node_0);
+    auto parser = PoseNode(node_0);
     executor.add_node(node_0);
 
     executor.spin();

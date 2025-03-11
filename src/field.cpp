@@ -29,7 +29,7 @@ using namespace rerun::demo;
 using namespace std::chrono_literals;
 using namespace std::placeholders;
 
-class Beacon {
+class PoseNode {
   private:
     std::string namespace_;
     rclcpp::Node::SharedPtr node;
@@ -50,7 +50,7 @@ class Beacon {
     rclcpp::TimerBase::SharedPtr timer;
 
   public:
-    Beacon(rclcpp::Node::SharedPtr node) : node(node) {
+    PoseNode(rclcpp::Node::SharedPtr node) : node(node) {
         // echo::info("Rerun for pose created");
         RCLCPP_INFO(node->get_logger(), "Rerun for pose created");
         tcp = node->get_parameter_or<std::string>("tcp", "127.0.0.1:9876");
@@ -76,14 +76,14 @@ class Beacon {
         //     "/field/swaths", 10, std::bind(&Beacon::swaths_callback, this, _1));
 
         border_subscriber = node->create_subscription<farmbot_interfaces::msg::Lines>(
-            "/field/border", 10, std::bind(&Beacon::border_callback, this, _1));
+            "/field/border", 10, std::bind(&PoseNode::border_callback, this, _1));
 
         std::vector<rerun::Position3D> points;
         points.push_back(rerun::Position3D(.0, .0, .0));
         //
     }
 
-    ~Beacon() { rclcpp::shutdown(); }
+    ~PoseNode() { rclcpp::shutdown(); }
 
   private:
     // void headlands_callback(const farmbot_interfaces::msg::Lines::SharedPtr msg) {
@@ -179,7 +179,7 @@ int main(int argc, char **argv) {
     options_0.allow_undeclared_parameters(true);
     options_0.automatically_declare_parameters_from_overrides(true);
     auto node_0 = rclcpp::Node::make_shared("rerun", options_0);
-    auto parser = Beacon(node_0);
+    auto parser = PoseNode(node_0);
     executor.add_node(node_0);
 
     executor.spin();
