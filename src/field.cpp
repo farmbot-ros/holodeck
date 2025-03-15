@@ -113,22 +113,23 @@ class PoseNode {
                 std::vector<std::array<float, 3>> points;
                 float x0 = static_cast<float>(swath.loc_line[0].x);
                 float y0 = static_cast<float>(swath.loc_line[0].y);
-                float z0 = static_cast<float>(swath.loc_line[0].z);
+                // float z0 = static_cast<float>(swath.loc_line[0].z);
+                float z0 = 0.0;
                 float x1 = static_cast<float>(swath.loc_line[1].x);
                 float y1 = static_cast<float>(swath.loc_line[1].y);
-                float z1 = static_cast<float>(swath.loc_line[1].z);
+                // float z1 = static_cast<float>(swath.loc_line[1].z);
+                float z1 = 0.0;
                 points.push_back({x0, y0, z0});
                 points.push_back({x1, y1, z1});
                 loc_swath_positions_.push_back(points);
             }
         }
-        // RCLCPP_INFO(node->get_logger(), "Publishing swaths");
-        //
+        RCLCPP_INFO(node->get_logger(), "Publishing %lu swaths", loc_swath_positions_.size());
         rec->log_static("world/map/field/swaths", rerun::Transform3D(rerun::components::Translation3D(.0, .0, .0),
                                                                      rerun::Quaternion::from_wxyz(1.0, 0.0, 0.0, 0.0)));
         rec->log_static("world/map/field/swaths",
                         rerun::LineStrips3D(loc_swath_positions_).with_colors({{158, 142, 158}}).with_radii({{0.2f}}));
-        got_swaths_ = true;
+        // got_swaths_ = true;
     }
 
     void border_callback(const farmbot_interfaces::msg::Lines::SharedPtr msg) {
