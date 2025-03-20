@@ -25,6 +25,7 @@ def launch_setup(context, *args, **kwargs):
             {"trajectory": trajectory},
             {"color": color},
         ],
+        output="screen",
     )
     nodes_array.append(rerun)
     return nodes_array

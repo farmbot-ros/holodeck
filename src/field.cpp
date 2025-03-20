@@ -39,8 +39,8 @@ class PoseNode {
 
     std::vector<std::array<float, 3>> loc_border_positions_;
     std::vector<rerun::LatLon> geo_border_positions_;
-    std::vector<std::vector<std::array<float, 3>>> loc_headland_positions_, geo_headland_positions_;
-    std::vector<std::vector<std::array<float, 3>>> loc_swath_positions_, geo_swath_positions_;
+    std::vector<std::vector<std::array<float, 3>>> loc_swath_positions_;
+    std::vector<std::vector<rerun::LatLon>> geo_swath_positions_;
 
     rclcpp::Subscription<farmbot_interfaces::msg::Lines>::SharedPtr headlands_subscriber, swaths_subscriber,
         border_subscriber;
@@ -108,6 +108,7 @@ class PoseNode {
     //
     void swaths_callback(const farmbot_interfaces::msg::Lines::SharedPtr msg) {
         loc_swath_positions_.clear();
+        geo_swath_positions_.clear();
         for (auto swath : msg->lines) {
             std::vector<std::array<float, 3>> points;
             float x0 = static_cast<float>(swath.loc_line[0].x);
@@ -121,11 +122,28 @@ class PoseNode {
             points.push_back({x0, y0, z0});
             points.push_back({x1, y1, z1});
             loc_swath_positions_.push_back(points);
+
+            std::vector<rerun::LatLon> one_line;
+            double lat0 = swath.geo_line[0].x;
+            double lon0 = swath.geo_line[0].y;
+            one_line.push_back({lat0, lon0});
+            double lat1 = swath.geo_line[1].x;
+            double lon1 = swath.geo_line[1].y;
+            one_line.push_back({lat1, lon1});
+            geo_swath_positions_.push_back(one_line);
         }
         rec->log_static("world/map/field/swaths", rerun::Transform3D(rerun::components::Translation3D(.0, .0, .0),
                                                                      rerun::Quaternion::from_wxyz(1.0, 0.0, 0.0, 0.0)));
         rec->log_static("world/map/field/swaths",
                         rerun::LineStrips3D(loc_swath_positions_).with_colors({{158, 142, 158}}).with_radii({{0.2f}}));
+        //
+        std::vector<rerun::components::GeoLineString> linestring;
+        for (auto latlon : geo_swath_positions_) {
+            auto string = rerun::components::GeoLineString::from_lat_lon(latlon);
+            linestring.push_back(string);
+        }
+        rec->log_static("world/map/field/swaths",
+                        rerun::GeoLineStrings(linestring).with_colors({{158, 142, 158}}).with_radii({{0.2f}}));
     }
 
     void border_callback(const farmbot_interfaces::msg::Lines::SharedPtr msg) {
