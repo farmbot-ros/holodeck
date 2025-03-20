@@ -37,7 +37,6 @@ class PoseNode {
     std::random_device rd;
     std::shared_ptr<rerun::RecordingStream> rec;
 
-    bool got_border_, got_headlands_, got_swaths_;
     std::vector<std::array<float, 3>> loc_border_positions_;
     std::vector<rerun::LatLon> geo_border_positions_;
     std::vector<std::vector<std::array<float, 3>>> loc_headland_positions_, geo_headland_positions_;
@@ -108,56 +107,49 @@ class PoseNode {
     // }
     //
     void swaths_callback(const farmbot_interfaces::msg::Lines::SharedPtr msg) {
-        if (!got_swaths_) {
-            for (auto swath : msg->lines) {
-                std::vector<std::array<float, 3>> points;
-                float x0 = static_cast<float>(swath.loc_line[0].x);
-                float y0 = static_cast<float>(swath.loc_line[0].y);
-                // float z0 = static_cast<float>(swath.loc_line[0].z);
-                float z0 = 0.0;
-                float x1 = static_cast<float>(swath.loc_line[1].x);
-                float y1 = static_cast<float>(swath.loc_line[1].y);
-                // float z1 = static_cast<float>(swath.loc_line[1].z);
-                float z1 = 0.0;
-                points.push_back({x0, y0, z0});
-                points.push_back({x1, y1, z1});
-                loc_swath_positions_.push_back(points);
-            }
+        loc_swath_positions_.clear();
+        for (auto swath : msg->lines) {
+            std::vector<std::array<float, 3>> points;
+            float x0 = static_cast<float>(swath.loc_line[0].x);
+            float y0 = static_cast<float>(swath.loc_line[0].y);
+            // float z0 = static_cast<float>(swath.loc_line[0].z);
+            float z0 = 0.0;
+            float x1 = static_cast<float>(swath.loc_line[1].x);
+            float y1 = static_cast<float>(swath.loc_line[1].y);
+            // float z1 = static_cast<float>(swath.loc_line[1].z);
+            float z1 = 0.0;
+            points.push_back({x0, y0, z0});
+            points.push_back({x1, y1, z1});
+            loc_swath_positions_.push_back(points);
         }
-        RCLCPP_INFO(node->get_logger(), "Publishing %lu swaths", loc_swath_positions_.size());
         rec->log_static("world/map/field/swaths", rerun::Transform3D(rerun::components::Translation3D(.0, .0, .0),
                                                                      rerun::Quaternion::from_wxyz(1.0, 0.0, 0.0, 0.0)));
         rec->log_static("world/map/field/swaths",
                         rerun::LineStrips3D(loc_swath_positions_).with_colors({{158, 142, 158}}).with_radii({{0.2f}}));
-        // got_swaths_ = true;
     }
 
     void border_callback(const farmbot_interfaces::msg::Lines::SharedPtr msg) {
-        if (!got_border_) {
-            for (auto line : msg->lines) {
-                float x = static_cast<float>(line.loc_line[0].x);
-                float y = static_cast<float>(line.loc_line[0].y);
-                // float z = static_cast<float>(line.loc_line[0].z);
-                float z = 0.0;
-                loc_border_positions_.push_back({x, y, z});
-                float lat = static_cast<float>(line.geo_line[0].x);
-                float lon = static_cast<float>(line.geo_line[0].y);
-                geo_border_positions_.push_back({lat, lon});
-            }
-            // RCLCPP_INFO(node->get_logger(), "Publishing border");
-            rec->log_static("world/map/field/border",
-                            rerun::Transform3D(rerun::components::Translation3D(.0, .0, .0),
-                                               rerun::Quaternion::from_wxyz(1.0, 0.0, 0.0, 0.0)));
-            auto border__ = rerun::components::LineStrip3D(loc_border_positions_);
-            rec->log_static("world/map/field/border",
-                            rerun::LineStrips3D(border__).with_colors({{0, 0, 255}}).with_radii({{0.2f}}));
-
-            auto linestring = rerun::components::GeoLineString::from_lat_lon(geo_border_positions_);
-            rec->log_static("world/map/field/border",
-                            rerun::GeoLineStrings(linestring).with_colors({{0, 0, 255}}).with_radii({{0.2f}}));
-
-            got_border_ = true;
+        geo_border_positions_.clear();
+        loc_border_positions_.clear();
+        for (auto line : msg->lines) {
+            float x = static_cast<float>(line.loc_line[0].x);
+            float y = static_cast<float>(line.loc_line[0].y);
+            // float z = static_cast<float>(line.loc_line[0].z);
+            float z = 0.0;
+            loc_border_positions_.push_back({x, y, z});
+            float lat = static_cast<float>(line.geo_line[0].x);
+            float lon = static_cast<float>(line.geo_line[0].y);
+            geo_border_positions_.push_back({lat, lon});
         }
+        rec->log_static("world/map/field/border", rerun::Transform3D(rerun::components::Translation3D(.0, .0, .0),
+                                                                     rerun::Quaternion::from_wxyz(1.0, 0.0, 0.0, 0.0)));
+        auto border__ = rerun::components::LineStrip3D(loc_border_positions_);
+        rec->log_static("world/map/field/border",
+                        rerun::LineStrips3D(border__).with_colors({{0, 0, 255}}).with_radii({{0.2f}}));
+
+        auto linestring = rerun::components::GeoLineString::from_lat_lon(geo_border_positions_);
+        rec->log_static("world/map/field/border",
+                        rerun::GeoLineStrings(linestring).with_colors({{0, 0, 255}}).with_radii({{0.2f}}));
     }
 
     // void border_callback(const farmbot_interfaces::msg::Lines::SharedPtr msg) {
