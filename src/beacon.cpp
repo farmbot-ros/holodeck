@@ -1,4 +1,4 @@
-#include "farmbot_interfaces/msg/beacon.hpp"
+#include "farmbot_interfaces/msg/agent.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rerun/archetypes/ellipsoids3d.hpp"
 #include "rerun/recording_stream.hpp"
@@ -15,7 +15,7 @@ class CapabilitiesNode {
     std::string namespace_;
     std::string tcp;
 
-    rclcpp::Subscription<farmbot_interfaces::msg::Beacon>::SharedPtr beacon_sub;
+    rclcpp::Subscription<farmbot_interfaces::msg::Agent>::SharedPtr beacon_sub;
 
   public:
     ~CapabilitiesNode() { rclcpp::shutdown(); }
@@ -27,7 +27,7 @@ class CapabilitiesNode {
 
         tcp = node->get_parameter_or<std::string>("tcp", "127.0.0.1:9876");
 
-        beacon_sub = node->create_subscription<farmbot_interfaces::msg::Beacon>(
+        beacon_sub = node->create_subscription<farmbot_interfaces::msg::Agent>(
             "beacon/rci", 10, std::bind(&CapabilitiesNode::beacon_callback, this, _1));
 
         rec = std::make_shared<rerun::RecordingStream>("farmbot", "space");
@@ -43,7 +43,7 @@ class CapabilitiesNode {
         }
     }
 
-    void beacon_callback(const farmbot_interfaces::msg::Beacon::SharedPtr msg) {
+    void beacon_callback(const farmbot_interfaces::msg::Agent::SharedPtr msg) {
         RCLCPP_INFO(node->get_logger(), "Beacon callback");
         if (counter > 10.0) {
             counter = 0.;

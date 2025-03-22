@@ -17,6 +17,10 @@
 #include <shared_mutex>
 #include <std_msgs/msg/string.hpp>
 
+#include <rerun/blueprint/archetypes/map_background.hpp>
+#include <rerun/blueprint/archetypes/view_blueprint.hpp>
+#include <rerun/blueprint/components/map_provider.hpp>
+
 #include "farmbot_holodeck/color.hpp"
 
 #include <rerun.hpp>
@@ -133,6 +137,12 @@ class PoseNode {
             rec->log_static("world/map/" + namespace_ + "/trajectory",
                             rerun::GeoLineStrings(linesting).with_colors({colors}));
         }
+
+        const rerun::blueprint::components::MapProvider _provider(
+            rerun::blueprint::components::MapProvider::MapboxDark);
+
+        rerun::blueprint::archetypes::MapBackground background_ =
+            rerun::blueprint::archetypes::MapBackground(_provider);
     }
 
     float delta_distance(std::array<float, 3> pos1, std::array<float, 3> pos2) {
