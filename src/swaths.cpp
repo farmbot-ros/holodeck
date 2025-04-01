@@ -80,7 +80,7 @@ class PoseNode {
     void swaths_callback(const farmbot_interfaces::msg::Lines::SharedPtr msg) {
         loc_swath_positions_.clear();
         geo_swath_positions_.clear();
-        RCLCPP_INFO(node->get_logger(), "Swaths callback");
+        // RCLCPP_INFO(node->get_logger(), "Swaths callback");
         for (auto swath : msg->lines) {
             std::vector<std::array<float, 3>> points;
             float x0 = static_cast<float>(swath.loc_line[0].x);
