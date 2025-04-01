@@ -37,6 +37,7 @@ set(executables
     pose
     field
     beacon
+    swaths
 )
 
 find_package(ament_cmake REQUIRED)

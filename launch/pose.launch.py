@@ -28,6 +28,22 @@ def launch_setup(context, *args, **kwargs):
         output="screen",
     )
     nodes_array.append(rerun)
+
+    swaths = Node(
+        package="farmbot_holodeck",
+        executable="swaths",
+        name="swaths",
+        namespace=namespace,
+        parameters=[
+            # yaml.safe_load(open(param_file))['rerun']['ros__parameters'],
+            # yaml.safe_load(open(param_file))['global']['ros__parameters'],
+            {"tcp": tcp} if tcp != "" else {},
+            {"color": color},
+        ],
+        output="screen",
+    )
+    nodes_array.append(swaths)
+
     return nodes_array
 
 
