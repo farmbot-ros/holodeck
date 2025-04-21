@@ -25,7 +25,7 @@ def launch_setup(context, *args, **kwargs):
 
 
 def generate_launch_description():
-    namespace_arg = DeclareLaunchArgument("namespace", default_value="fbot")
+    namespace_arg = DeclareLaunchArgument("namespace", default_value="robot0")
     tcp_arg = DeclareLaunchArgument("tcp", default_value="")
 
     return LaunchDescription(

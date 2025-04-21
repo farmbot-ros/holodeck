@@ -44,6 +44,19 @@ def launch_setup(context, *args, **kwargs):
     )
     nodes_array.append(swaths)
 
+    rerun = Node(
+        package="farmbot_holodeck",
+        executable="field",
+        name="field",
+        namespace=namespace,
+        parameters=[
+            {"tcp": tcp} if tcp != "" else {},
+        ],
+        output="screen",
+    )
+    nodes_array.append(rerun)
+    return nodes_array
+
     return nodes_array
 
 

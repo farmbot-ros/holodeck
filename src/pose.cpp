@@ -78,7 +78,7 @@ class PoseNode {
         }
 
         robo_pose = node->create_subscription<nav_msgs::msg::Odometry>(
-            "loc/odom", 10, std::bind(&PoseNode::robo_pose_callback, this, _1));
+            "loc/enu", 10, std::bind(&PoseNode::robo_pose_callback, this, _1));
 
         gps_pose = node->create_subscription<sensor_msgs::msg::NavSatFix>(
             "loc/fix", 10, std::bind(&PoseNode::robo_gps_callback, this, _1));
