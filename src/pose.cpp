@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstdint>
 #include <ctime>
+#include <geometry_msgs/msg/pose_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <random>
 #include <rclcpp/publisher.hpp>
@@ -39,7 +40,7 @@ class PoseNode {
     std::string color;
     std::shared_ptr<rerun::RecordingStream> rec;
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr publisher;
-    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr robo_pose;
+    rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr robo_pose;
     rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr gps_pose;
     std::vector<rerun::Color> colors;
 
@@ -77,7 +78,7 @@ class PoseNode {
             RCLCPP_WARN(node->get_logger(), "Could not spawn viewer");
         }
 
-        robo_pose = node->create_subscription<nav_msgs::msg::Odometry>(
+        robo_pose = node->create_subscription<geometry_msgs::msg::PoseStamped>(
             "loc/enu", 10, std::bind(&PoseNode::robo_pose_callback, this, _1));
 
         gps_pose = node->create_subscription<sensor_msgs::msg::NavSatFix>(
@@ -87,12 +88,12 @@ class PoseNode {
     ~PoseNode() { rclcpp::shutdown(); }
 
   private:
-    void robo_pose_callback(const nav_msgs::msg::Odometry::SharedPtr msg) {
+    void robo_pose_callback(const geometry_msgs::msg::PoseStamped::SharedPtr msg) {
         counter_pos++;
         // RCLCPP_INFO(node->get_logger(), "Robo pose callback");
-        auto x = float(msg->pose.pose.position.x);
-        auto y = float(msg->pose.pose.position.y);
-        auto z = float(msg->pose.pose.position.z);
+        auto x = float(msg->pose.position.x);
+        auto y = float(msg->pose.position.y);
+        auto z = float(msg->pose.position.z);
 
         std::vector<rerun::Position3D> points;
         points.push_back(rerun::Position3D(x, y, z));
